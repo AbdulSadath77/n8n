@@ -26,6 +26,12 @@ export class ChatHubMessageHistory extends BaseChatMessageHistory {
 	async getMessages(): Promise<BaseMessage[]> {
 		const messages = await this.proxy.getMessages(this.lastMessageId ?? undefined);
 
+		// Update lastMessageId to the last message in the chain for proper chaining
+		// This ensures new messages chain off existing conversation instead of using null
+		if (messages.length > 0) {
+			this.lastMessageId = messages[messages.length - 1].id;
+		}
+
 		return messages.map((msg) => this.convertToLangChainMessage(msg));
 	}
 

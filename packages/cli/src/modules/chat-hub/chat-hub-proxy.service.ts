@@ -16,6 +16,7 @@ import { ChatHubMessageRepository } from './chat-message.repository';
 import { ChatHubSessionRepository } from './chat-session.repository';
 
 const ALLOWED_NODES = ['@n8n/n8n-nodes-langchain.memoryChatHub'] as const;
+const NAME_FALLBACK = 'Workflow Chat';
 
 type AllowedNode = (typeof ALLOWED_NODES)[number];
 
@@ -53,10 +54,37 @@ export class ChatHubProxyService implements ChatHubProxyProvider {
 			);
 		}
 
-		return this.makeChatHubOperations(sessionId, ownerId);
+		// Extract workflow info for session creation
+		const workflowId = workflow.id;
+		const agentName = this.extractAgentName(workflow);
+
+		return this.makeChatHubOperations(sessionId, ownerId, workflowId, agentName);
 	}
 
-	private makeChatHubOperations(sessionId: string, ownerId: string): IChatHubSessionService {
+	/**
+	 * Extract agent name from the chat trigger node's agentName parameter,
+	 * falling back to workflow name if not set.
+	 */
+	private extractAgentName(workflow: Workflow): string {
+		// Look for chat trigger node
+		const chatTriggerNode = Object.values(workflow.nodes).find(
+			(n) => n.type === '@n8n/n8n-nodes-langchain.chatTrigger',
+		);
+
+		if (chatTriggerNode?.parameters?.agentName) {
+			return String(chatTriggerNode.parameters.agentName);
+		}
+
+		// Fall back to workflow name
+		return workflow.name || NAME_FALLBACK;
+	}
+
+	private makeChatHubOperations(
+		sessionId: string,
+		ownerId: string,
+		workflowId: string | undefined,
+		agentName: string,
+	): IChatHubSessionService {
 		const messageRepository = this.messageRepository;
 		const sessionRepository = this.sessionRepository;
 		const logger = this.logger;
@@ -172,23 +200,30 @@ export class ChatHubProxyService implements ChatHubProxyProvider {
 				logger.debug('Cleared all messages for session', { sessionId });
 			},
 
-			async ensureSession(title = 'Workflow Chat'): Promise<void> {
+			async ensureSession(title?: string): Promise<void> {
 				const exists = await sessionRepository.existsById(sessionId, ownerId);
 				if (!exists) {
+					const sessionTitle = title || NAME_FALLBACK;
 					await sessionRepository.createChatSession({
 						id: sessionId,
 						ownerId,
-						title,
+						title: sessionTitle,
 						lastMessageAt: new Date(),
 						tools: [],
 						provider: 'n8n',
 						credentialId: null,
 						model: null,
-						workflowId: null,
+						workflowId: workflowId ?? null,
 						agentId: null,
-						agentName: null,
+						agentName,
 					});
-					logger.debug('Created new chat hub session', { sessionId, ownerId, title });
+					logger.debug('Created new chat hub session', {
+						sessionId,
+						ownerId,
+						title: sessionTitle,
+						workflowId,
+						agentName,
+					});
 				}
 			},
 		};
