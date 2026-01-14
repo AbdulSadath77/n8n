@@ -8,7 +8,6 @@ import {
 	PrimaryGeneratedColumn,
 } from '@n8n/typeorm';
 
-import type { ChatHubMessage } from './chat-hub-message.entity';
 import type { ChatHubSession } from './chat-hub-session.entity';
 
 export type ChatHubMemoryRole = 'human' | 'ai' | 'system' | 'tool';
@@ -17,7 +16,7 @@ export type ChatHubMemoryRole = 'human' | 'ai' | 'system' | 'tool';
  * Stores agent memory entries separately from chat UI messages.
  * This allows:
  * - Multiple memory nodes in the same workflow to have isolated memory
- * - Memory branching on edit/retry via parentMessageId
+ * - Memory branching on edit/retry via turnId (correlation ID for execution turns)
  * - Separation between what the agent remembers vs what the user sees
  */
 @Entity({ name: 'chat_hub_memory' })
@@ -46,19 +45,14 @@ export class ChatHubMemory extends WithTimestamps {
 	memoryNodeId: string;
 
 	/**
-	 * ID of the human message in chat_hub_messages that triggered the execution
-	 * which created this memory entry. Used for branching on edit/retry.
-	 * NULL for manual executions (not supported yet).
+	 * Correlation ID linking this memory entry to a specific execution turn.
+	 * A "turn" represents one request-response execution cycle.
+	 * The turnId is generated BEFORE workflow execution starts and is shared
+	 * between memory entries created during the execution and the AI message.
+	 * NULL for manual executions.
 	 */
 	@Column({ type: String, nullable: true })
-	parentMessageId: string | null;
-
-	/**
-	 * The parent message that triggered this memory entry.
-	 */
-	@ManyToOne('ChatHubMessage', { onDelete: 'CASCADE', nullable: true })
-	@JoinColumn({ name: 'parentMessageId' })
-	parentMessage?: Relation<ChatHubMessage> | null;
+	turnId: string | null;
 
 	/**
 	 * Role of the message: 'human', 'ai', 'system', or 'tool'.

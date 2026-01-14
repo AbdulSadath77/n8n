@@ -13,19 +13,13 @@ export function getChatHubHelperFunctions(
 	const chatHubProxyProvider = additionalData['chat-hub']?.chatHubProxyProvider;
 	if (!chatHubProxyProvider) return {};
 	return {
-		getChatHubProxy: async (
-			sessionId: string,
-			memoryNodeId: string,
-			parentMessageId: string | null,
-			excludeCurrentFromMemory: boolean,
-		) =>
+		getChatHubProxy: async (sessionId: string, memoryNodeId: string, turnId: string | null) =>
 			await chatHubProxyProvider.getChatHubProxy(
 				workflow,
 				node,
 				sessionId,
 				memoryNodeId,
-				parentMessageId,
-				excludeCurrentFromMemory,
+				turnId,
 				additionalData.userId,
 			),
 	};

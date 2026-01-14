@@ -174,6 +174,10 @@ export class ChatHubService {
 
 		const credentialId = this.getModelCredential(model, credentials);
 
+		// For n8n workflow agents, generate the AI message ID early so it can be
+		// injected into MemoryChatHub nodes for memory linking
+		const aiMessageId = model.provider === 'n8n' ? uuidv4() : null;
+
 		let processedAttachments: IBinaryData[] = [];
 		let workflow: PreparedChatWorkflow;
 		try {
@@ -220,8 +224,7 @@ export class ChatHubService {
 					tools,
 					processedAttachments,
 					tz,
-					messageId,
-					false, // isRegeneration
+					aiMessageId,
 					trx,
 				);
 			});
@@ -284,8 +287,9 @@ export class ChatHubService {
 			workflow.workflowData,
 			workflow.executionData,
 			sessionId,
-			messageId,
-			null,
+			messageId, // previousMessageId (the human message)
+			null, // retryOfMessageId
+			aiMessageId, // pre-generated AI message ID for n8n provider
 			workflow.responseMode,
 		);
 
@@ -310,6 +314,10 @@ export class ChatHubService {
 	async editMessage(res: Response, user: User, payload: EditMessagePayload) {
 		const { sessionId, editId, messageId, message, model, credentials, timeZone } = payload;
 		const tz = timeZone ?? this.globalConfig.generic.timezone;
+
+		// For n8n workflow agents, generate the AI message ID early so it can be
+		// injected into MemoryChatHub nodes for memory linking
+		const aiMessageId = model.provider === 'n8n' ? uuidv4() : null;
 
 		let workflow: PreparedChatWorkflow | null = null;
 		let newStoredAttachments: IBinaryData[] = [];
@@ -385,8 +393,7 @@ export class ChatHubService {
 						session.tools,
 						attachments,
 						tz,
-						payload.messageId,
-						false, // isRegeneration
+						aiMessageId,
 						trx,
 					);
 				}
@@ -419,8 +426,9 @@ export class ChatHubService {
 			workflowData,
 			executionData,
 			sessionId,
-			messageId,
-			null,
+			messageId, // previousMessageId (the edited human message)
+			null, // retryOfMessageId
+			aiMessageId, // pre-generated AI message ID for n8n provider
 			responseMode,
 		);
 	}
@@ -428,6 +436,10 @@ export class ChatHubService {
 	async regenerateAIMessage(res: Response, user: User, payload: RegenerateMessagePayload) {
 		const { sessionId, retryId, model, credentials, timeZone } = payload;
 		const tz = timeZone ?? this.globalConfig.generic.timezone;
+
+		// For n8n workflow agents, generate the AI message ID early so it can be
+		// injected into MemoryChatHub nodes for memory linking
+		const aiMessageId = model.provider === 'n8n' ? uuidv4() : null;
 
 		const { retryOfMessageId, previousMessageId, workflow } =
 			await this.messageRepository.manager.transaction(async (trx) => {
@@ -473,8 +485,7 @@ export class ChatHubService {
 					session.tools,
 					attachments,
 					tz,
-					lastHumanMessage.id,
-					true, // isRegeneration - exclude memory from the message we're regenerating
+					aiMessageId,
 					trx,
 				);
 
@@ -494,6 +505,7 @@ export class ChatHubService {
 			sessionId,
 			previousMessageId,
 			retryOfMessageId,
+			aiMessageId, // pre-generated AI message ID for n8n provider
 			workflow.responseMode,
 		);
 	}
@@ -508,19 +520,20 @@ export class ChatHubService {
 		tools: INode[],
 		attachments: IBinaryData[],
 		timeZone: string,
-		humanMessageId: string,
-		isRegeneration: boolean,
+		aiMessageId: string | null,
 		trx: EntityManager,
 	) {
 		if (model.provider === 'n8n') {
+			if (!aiMessageId) {
+				throw new UnexpectedError('AI message ID is required for workflow agent');
+			}
 			return await this.prepareWorkflowAgentWorkflow(
 				user,
 				sessionId,
 				model.workflowId,
 				message,
 				attachments,
-				humanMessageId,
-				isRegeneration,
+				aiMessageId,
 				trx,
 			);
 		}
@@ -649,8 +662,7 @@ export class ChatHubService {
 		workflowId: string,
 		message: string,
 		attachments: IBinaryData[],
-		humanMessageId: string,
-		isRegeneration: boolean,
+		aiMessageId: string,
 		trx: EntityManager,
 	) {
 		const workflow = await this.workflowFinderService.findWorkflowForUser(
@@ -733,18 +745,19 @@ export class ChatHubService {
 			},
 		});
 
-		// Inject parentMessageId and excludeCurrentFromMemory into any MemoryChatHub nodes
-		// - parentMessageId: links memory entries to the human message that triggered this execution
-		// - excludeCurrentFromMemory: true for regeneration, excludes memory from the message being regenerated
+		// Inject turnId into any MemoryChatHub nodes.
+		// turnId is a correlation ID generated BEFORE workflow execution starts.
+		// Memory entries created during this turn will be linked to the AI message via this turnId.
+		// On regeneration, a new turnId → new memory → old AI message is superseded → old memory excluded.
 		const MEMORY_CHAT_HUB_NODE_TYPE = '@n8n/n8n-nodes-langchain.memoryChatHub';
+		const turnId = aiMessageId; // We reuse the aiMessageId as turnId for correlation
 		const nodes = workflow.activeVersion.nodes.map((node) => {
 			if (node.type === MEMORY_CHAT_HUB_NODE_TYPE) {
 				return {
 					...node,
 					parameters: {
 						...node.parameters,
-						parentMessageId: humanMessageId,
-						excludeCurrentFromMemory: isRegeneration,
+						turnId,
 					},
 				};
 			}
@@ -825,6 +838,7 @@ export class ChatHubService {
 		sessionId: ChatSessionId,
 		previousMessageId: ChatMessageId,
 		retryOfMessageId: ChatMessageId | null = null,
+		aiMessageId: ChatMessageId | null = null,
 		executionMode: WorkflowExecuteMode = 'chat',
 		responseMode: ChatTriggerResponseMode,
 	) {
@@ -846,6 +860,7 @@ export class ChatHubService {
 				sessionId,
 				previousMessageId,
 				retryOfMessageId,
+				aiMessageId,
 				executionMode,
 				responseMode,
 			);
@@ -859,6 +874,7 @@ export class ChatHubService {
 				sessionId,
 				previousMessageId,
 				retryOfMessageId,
+				aiMessageId,
 				executionMode,
 			);
 		}
@@ -873,6 +889,7 @@ export class ChatHubService {
 		sessionId: string,
 		previousMessageId: string,
 		retryOfMessageId: string | null,
+		aiMessageId: string | null,
 		executionMode: WorkflowExecuteMode,
 		responseMode: NonStreamingResponseMode,
 	) {
@@ -885,7 +902,9 @@ export class ChatHubService {
 			executionMode,
 		);
 
-		const messageId = uuidv4();
+		// Use pre-generated AI message ID if provided (for n8n workflow agents),
+		// otherwise generate a new one (for other providers)
+		const messageId = aiMessageId ?? uuidv4();
 		const executionId = running.executionId;
 
 		if (!executionId) {
@@ -900,6 +919,7 @@ export class ChatHubService {
 			model,
 			previousMessageId,
 			retryOfMessageId,
+			aiMessageId, // turnId - for n8n workflow agents, this links memory to this AI message
 		);
 
 		try {
@@ -1000,6 +1020,7 @@ export class ChatHubService {
 				model,
 				previousMessageId,
 				null,
+				null, // turnId - null for resumed executions
 			);
 
 			await this.waitForExecutionCompletion(execution.id);
@@ -1115,6 +1136,7 @@ export class ChatHubService {
 		model: ChatHubConversationModel,
 		previousMessageId: string,
 		retryOfMessageId: string | null,
+		turnId: string | null,
 	) {
 		const beginChunk: MessageChunk = {
 			type: 'begin',
@@ -1143,6 +1165,7 @@ export class ChatHubService {
 			model,
 			previousMessageId,
 			retryOfMessageId,
+			turnId,
 			status: 'running',
 		});
 	}
@@ -1214,6 +1237,7 @@ export class ChatHubService {
 		sessionId: string,
 		previousMessageId: string,
 		retryOfMessageId: string | null,
+		turnId: string | null, // Correlation ID for n8n workflow agents - links memory to this AI message
 		executionMode: WorkflowExecuteMode,
 	) {
 		// Capture the streaming response as it's being generated to save
@@ -1228,6 +1252,7 @@ export class ChatHubService {
 					executionId,
 					model,
 					retryOfMessageId,
+					turnId, // Link memory entries to this AI message via turnId
 				});
 			},
 			onItem: async (_message, _chunk) => {
@@ -1438,6 +1463,7 @@ export class ChatHubService {
 		sessionId: ChatSessionId,
 		previousMessageId: ChatMessageId,
 		retryOfMessageId: ChatMessageId | null,
+		aiMessageId: ChatMessageId | null,
 		responseMode: ChatTriggerResponseMode,
 	) {
 		try {
@@ -1454,6 +1480,7 @@ export class ChatHubService {
 				sessionId,
 				previousMessageId,
 				retryOfMessageId,
+				aiMessageId,
 				executionMode,
 				responseMode,
 			);
@@ -1757,6 +1784,7 @@ export class ChatHubService {
 		content,
 		model,
 		retryOfMessageId,
+		turnId,
 		status,
 	}: {
 		id: ChatMessageId;
@@ -1767,6 +1795,8 @@ export class ChatHubService {
 		executionId?: string;
 		retryOfMessageId: ChatMessageId | null;
 		editOfMessageId?: ChatMessageId;
+		/** Correlation ID linking this AI message to memory entries created during this turn */
+		turnId?: ChatMessageId | null;
 		status?: ChatHubMessageStatus;
 	}) {
 		await this.messageRepository.createChatMessage({
@@ -1779,6 +1809,7 @@ export class ChatHubService {
 			status,
 			content,
 			retryOfMessageId,
+			turnId: turnId ?? null,
 			...model,
 		});
 	}

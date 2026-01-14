@@ -1001,8 +1001,7 @@ export type ChatHubProxyProvider = {
 		node: INode,
 		sessionId: string,
 		memoryNodeId: string,
-		parentMessageId: string | null,
-		excludeCurrentFromMemory: boolean,
+		turnId: string | null,
 		ownerId?: string,
 	): Promise<IChatHubMemoryService>;
 };
@@ -1012,8 +1011,7 @@ export type ChatHubProxyFunctions = {
 	getChatHubProxy?(
 		sessionId: string,
 		memoryNodeId: string,
-		parentMessageId: string | null,
-		excludeCurrentFromMemory: boolean,
+		turnId: string | null,
 	): Promise<IChatHubMemoryService>;
 };
 

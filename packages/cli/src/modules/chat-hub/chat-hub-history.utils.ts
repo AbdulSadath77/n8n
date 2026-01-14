@@ -73,6 +73,7 @@ export function buildMessageHistory(
 			previousMessageId: msg.previousMessageId,
 			retryOfMessageId: msg.retryOfMessageId,
 			revisionOfMessageId: msg.revisionOfMessageId,
+			turnId: msg.turnId,
 		};
 	});
 }
@@ -87,4 +88,20 @@ export function buildMessageHistory(
  */
 export function extractHumanMessageIds(messages: ChatHubMemoryMessage[]): string[] {
 	return messages.filter((msg) => msg.type === 'human').map((msg) => msg.id);
+}
+
+/**
+ * Extracts the turn IDs from AI messages in a message history.
+ * Turn IDs are correlation IDs linking memory entries to AI messages.
+ * Memory entries are loaded based on the turnIds of active AI messages in the chain,
+ * enabling proper branching on regeneration - superseded AI messages (and their memory)
+ * are automatically excluded from the chain.
+ *
+ * @param messages - Message history (typically from buildMessageHistory)
+ * @returns Array of turn IDs in chronological order (excluding null values)
+ */
+export function extractTurnIds(messages: ChatHubMemoryMessage[]): string[] {
+	return messages
+		.filter((msg) => msg.type === 'ai' && msg.turnId !== null)
+		.map((msg) => msg.turnId!);
 }

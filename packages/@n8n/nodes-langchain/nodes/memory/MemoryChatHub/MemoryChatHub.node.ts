@@ -64,21 +64,15 @@ export class MemoryChatHub implements INodeType {
 			sessionKeyProperty,
 			contextWindowLengthProperty,
 			{
-				// Hidden parameter for parentMessageId - injected by Chat Hub service
-				displayName: 'Parent Message ID',
-				name: 'parentMessageId',
+				// Hidden parameter for turnId - injected by Chat Hub service before workflow execution.
+				// This is a correlation ID generated BEFORE the workflow runs, linking memory entries
+				// to the AI message that will be created for this execution turn.
+				// On regeneration, a new turnId is generated, so old memory is automatically excluded.
+				displayName: 'Turn ID',
+				name: 'turnId',
 				type: 'hidden',
 				default: '',
-				description: 'ID of the parent message that triggered this execution (set by Chat Hub)',
-			},
-			{
-				// Hidden parameter for excludeCurrentFromMemory - injected by Chat Hub service for regeneration
-				displayName: 'Exclude Current From Memory',
-				name: 'excludeCurrentFromMemory',
-				type: 'hidden',
-				default: false,
-				description:
-					'Whether to exclude memory entries from the current parentMessageId (used for regeneration)',
+				description: 'Correlation ID for this execution turn (set by Chat Hub)',
 			},
 			{
 				displayName: 'Options',
@@ -114,13 +108,7 @@ export class MemoryChatHub implements INodeType {
 	async supplyData(this: ISupplyDataFunctions, itemIndex: number): Promise<SupplyData> {
 		const sessionId = getSessionId(this, itemIndex);
 		const contextWindowLength = this.getNodeParameter('contextWindowLength', itemIndex) as number;
-		const parentMessageId =
-			(this.getNodeParameter('parentMessageId', itemIndex, '') as string) || null;
-		const excludeCurrentFromMemory = this.getNodeParameter(
-			'excludeCurrentFromMemory',
-			itemIndex,
-			false,
-		) as boolean;
+		const turnId = (this.getNodeParameter('turnId', itemIndex, '') as string) || null;
 		const options = this.getNodeParameter('options', itemIndex, {}) as {
 			autoCreateSession?: boolean;
 			sessionTitle?: string;
@@ -131,14 +119,10 @@ export class MemoryChatHub implements INodeType {
 		const memoryNodeId = node.id;
 
 		// Get the Chat Hub proxy
-		// parentMessageId may be null for manual executions - proxy will look up latest message
-		// excludeCurrentFromMemory is true for regeneration - excludes memory from the current parentMessageId
-		const memoryService = await this.helpers.getChatHubProxy?.(
-			sessionId,
-			memoryNodeId,
-			parentMessageId,
-			excludeCurrentFromMemory,
-		);
+		// turnId is a correlation ID generated before execution starts.
+		// Memory entries created during this turn share this turnId with the AI message.
+		// For manual executions (null), memory will be loaded for all AI messages in the conversation.
+		const memoryService = await this.helpers.getChatHubProxy?.(sessionId, memoryNodeId, turnId);
 
 		if (!memoryService) {
 			throw new NodeOperationError(

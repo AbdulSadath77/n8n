@@ -114,6 +114,16 @@ export class ChatHubMessage extends WithTimestamps {
 	revisionOfMessageId: string | null;
 
 	/**
+	 * Correlation ID linking this message to a specific execution turn.
+	 * A "turn" represents one request-response execution cycle.
+	 * Memory entries created during the same turn share this turnId.
+	 * This enables memory isolation on edit/retry - superseded messages
+	 * have their turnIds excluded from memory loading.
+	 */
+	@Column({ type: String, nullable: true })
+	turnId: string | null;
+
+	/**
 	 * Status of the message, e.g. 'running', 'success', 'error', 'cancelled'.
 	 */
 	@Column({ type: 'varchar', length: 16, default: 'success' })

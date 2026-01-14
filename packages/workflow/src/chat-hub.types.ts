@@ -16,6 +16,8 @@ export interface ChatHubMemoryMessage {
 	previousMessageId: string | null;
 	retryOfMessageId: string | null;
 	revisionOfMessageId: string | null;
+	/** Correlation ID linking this message to a specific execution turn */
+	turnId: string | null;
 }
 
 /**
@@ -34,7 +36,7 @@ export interface ChatHubMemoryEntry {
  * Service interface for interacting with chat hub memory for a specific node.
  * Memory is stored separately from chat UI messages, allowing:
  * - Multiple memory nodes in the same workflow to have isolated memory
- * - Proper branching on edit/retry via parentMessageId linking
+ * - Proper branching on edit/retry via turnId linking
  */
 export interface IChatHubMemoryService {
 	/** Get session owner ID (the user who owns the session) */

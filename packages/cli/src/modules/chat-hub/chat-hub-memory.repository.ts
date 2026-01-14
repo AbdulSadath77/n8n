@@ -9,7 +9,7 @@ export interface CreateMemoryEntryData {
 	id: string;
 	sessionId: string;
 	memoryNodeId: string;
-	parentMessageId: string | null;
+	turnId: string | null;
 	role: ChatHubMemoryRole;
 	content: string;
 	name: string | null;
@@ -42,17 +42,18 @@ export class ChatHubMemoryRepository extends Repository<ChatHubMemory> {
 
 	/**
 	 * Get memory entries for a specific memory node,
-	 * filtered by parent message IDs (for branching support).
+	 * filtered by turn IDs (for branching support).
+	 * Turn IDs are correlation IDs linking memory entries to AI messages.
 	 */
-	async getMemoryByParentMessageIds(
+	async getMemoryByTurnIds(
 		sessionId: string,
 		memoryNodeId: string,
-		parentMessageIds: string[],
+		turnIds: string[],
 		trx?: EntityManager,
 	): Promise<ChatHubMemory[]> {
 		const em = trx ?? this.manager;
 
-		if (parentMessageIds.length === 0) {
+		if (turnIds.length === 0) {
 			return [];
 		}
 
@@ -60,7 +61,7 @@ export class ChatHubMemoryRepository extends Repository<ChatHubMemory> {
 			where: {
 				sessionId,
 				memoryNodeId,
-				parentMessageId: In(parentMessageIds),
+				turnId: In(turnIds),
 			},
 			order: { createdAt: 'ASC' },
 		});
@@ -68,7 +69,7 @@ export class ChatHubMemoryRepository extends Repository<ChatHubMemory> {
 
 	/**
 	 * Get all memory entries for a session and memory node.
-	 * Used when parentMessageId is not available (e.g., manual executions).
+	 * Used when turnId is not available (e.g., manual executions).
 	 */
 	async getAllMemoryForNode(
 		sessionId: string,

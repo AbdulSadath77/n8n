@@ -11,17 +11,26 @@ const table = {
  * separately from chat UI messages. This allows:
  * - Multiple memory nodes in the same workflow to have isolated memory
  * - Separation between what the agent remembers vs what the user sees
- * - Memory branching on edit/retry
+ * - Memory branching on edit/retry via turnId correlation
+ *
+ * The turnId is a correlation ID representing a single request-response execution cycle.
+ * It's generated BEFORE workflow execution starts, so it can be used to link memory entries
+ * to AI messages without requiring the AI message to exist first (avoiding FK constraint issues).
  */
 export class CreateChatHubMemoryTable1768311480000 implements ReversibleMigration {
-	async up({ schemaBuilder: { createTable, column, createIndex } }: MigrationContext) {
+	async up({
+		schemaBuilder: { createTable, addColumns, column, createIndex },
+		runQuery,
+		escape,
+	}: MigrationContext) {
+		// Create chat_hub_memory table
 		await createTable(table.memory)
 			.withColumns(
 				column('id').uuid.primary.notNull,
 				column('sessionId').uuid.notNull,
 				column('memoryNodeId').varchar(36).notNull.comment('n8n node ID of the MemoryChatHub node'),
-				column('parentMessageId').uuid.comment(
-					'ID of the 	message that triggered this memory entry',
+				column('turnId').uuid.comment(
+					'Correlation ID linking memory to an AI message turn (no FK constraint)',
 				),
 				column('role').varchar(16).notNull.comment('Role: "human", "ai", "system", "tool"'),
 				column('content').text.notNull,
@@ -31,18 +40,24 @@ export class CreateChatHubMemoryTable1768311480000 implements ReversibleMigratio
 				tableName: table.sessions,
 				columnName: 'id',
 				onDelete: 'CASCADE',
-			})
-			.withForeignKey('parentMessageId', {
-				tableName: table.messages,
-				columnName: 'id',
-				onDelete: 'CASCADE',
 			}).withTimestamps;
 
-		await createIndex('chat_hub_memory', ['sessionId', 'memoryNodeId', 'parentMessageId']);
+		await createIndex(table.memory, ['sessionId', 'memoryNodeId', 'turnId']);
+
+		// Add turnId column to chat_hub_messages
+		await addColumns(table.messages, [
+			column('turnId').uuid.comment('Correlation ID for this execution turn'),
+		]);
+
+		// Backfill turnId for existing AI messages using their own message ID
+		await runQuery(
+			`UPDATE ${escape.tableName(table.messages)} SET ${escape.columnName('turnId')} = ${escape.columnName('id')} WHERE ${escape.columnName('type')} = 'ai'`,
+		);
 	}
 
-	async down({ schemaBuilder: { dropTable, dropIndex } }: MigrationContext) {
-		await dropIndex('chat_hub_memory', ['sessionId', 'memoryNodeId', 'parentMessageId']);
+	async down({ schemaBuilder: { dropTable, dropColumns, dropIndex } }: MigrationContext) {
+		await dropColumns(table.messages, ['turnId']);
+		await dropIndex(table.memory, ['sessionId', 'memoryNodeId', 'turnId']);
 		await dropTable(table.memory);
 	}
 }

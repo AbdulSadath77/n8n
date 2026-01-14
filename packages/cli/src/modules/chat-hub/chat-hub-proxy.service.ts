@@ -9,7 +9,7 @@ import {
 } from 'n8n-workflow';
 import { v4 as uuid } from 'uuid';
 
-import { buildMessageHistory, extractHumanMessageIds } from './chat-hub-history.utils';
+import { buildMessageHistory, extractTurnIds } from './chat-hub-history.utils';
 import { ChatHubMemoryRepository } from './chat-hub-memory.repository';
 import { ChatHubMessageRepository } from './chat-message.repository';
 import { ChatHubSessionRepository } from './chat-session.repository';
@@ -45,8 +45,7 @@ export class ChatHubProxyService implements ChatHubProxyProvider {
 		node: INode,
 		sessionId: string,
 		memoryNodeId: string,
-		parentMessageId: string | null,
-		excludeCurrentFromMemory: boolean,
+		turnId: string | null,
 		ownerId?: string,
 	): Promise<IChatHubMemoryService> {
 		this.validateRequest(node);
@@ -64,8 +63,7 @@ export class ChatHubProxyService implements ChatHubProxyProvider {
 		return this.makeChatHubOperations(
 			sessionId,
 			memoryNodeId,
-			parentMessageId,
-			excludeCurrentFromMemory,
+			turnId,
 			ownerId,
 			workflowId,
 			agentName,
@@ -100,8 +98,7 @@ export class ChatHubProxyService implements ChatHubProxyProvider {
 	private makeChatHubOperations(
 		sessionId: string,
 		memoryNodeId: string,
-		initialParentMessageId: string | null,
-		excludeCurrentFromMemory: boolean,
+		executionTurnId: string | null,
 		ownerId: string,
 		workflowId: string | undefined,
 		agentName: string,
@@ -111,44 +108,9 @@ export class ChatHubProxyService implements ChatHubProxyProvider {
 		const sessionRepository = this.sessionRepository;
 		const logger = this.logger;
 
-		// Track the resolved parentMessageId - may be looked up if not provided
-		let resolvedParentMessageId: string | null = initialParentMessageId;
-		let parentMessageIdResolved = initialParentMessageId !== null;
-
-		/**
-		 * Resolve the parentMessageId if not provided.
-		 * For manual executions, look up the latest human message in the session.
-		 */
-		async function resolveParentMessageId(): Promise<string | null> {
-			if (parentMessageIdResolved) {
-				return resolvedParentMessageId;
-			}
-
-			// Look up the latest human message in the session
-			const chatMessages = await messageRepository.getManyBySessionId(sessionId);
-			const messageChain = buildMessageHistory(chatMessages);
-			const humanMessageIds = extractHumanMessageIds(messageChain);
-
-			if (humanMessageIds.length > 0) {
-				// Use the most recent human message as the parent
-				resolvedParentMessageId = humanMessageIds[humanMessageIds.length - 1];
-				logger.debug('Resolved parentMessageId from latest human message', {
-					sessionId,
-					memoryNodeId,
-					resolvedParentMessageId,
-				});
-			} else {
-				// No human messages yet - this is manual execution / execution outside Chat Hub
-				resolvedParentMessageId = null;
-				logger.debug('No human messages in session - starting fresh', {
-					sessionId,
-					memoryNodeId,
-				});
-			}
-
-			parentMessageIdResolved = true;
-			return resolvedParentMessageId;
-		}
+		// turnId is a correlation ID generated BEFORE workflow execution starts.
+		// It links memory entries created during this execution to the AI message that will be saved later.
+		// For manual executions (turnId is null), we don't link to any message.
 
 		return {
 			getOwnerId() {
@@ -156,64 +118,39 @@ export class ChatHubProxyService implements ChatHubProxyProvider {
 			},
 
 			async getMemory(): Promise<ChatHubMemoryEntry[]> {
-				const parentMessageId = await resolveParentMessageId();
+				// Get all chat messages for the session
+				const chatMessages = await messageRepository.getManyBySessionId(sessionId);
 
-				// If we have a parentMessageId, load memory with branching support
-				if (parentMessageId) {
-					// Get all chat messages for the session
-					const chatMessages = await messageRepository.getManyBySessionId(sessionId);
-
-					// Build the message chain up to parentMessageId
-					const messageChain = buildMessageHistory(chatMessages, parentMessageId);
-
-					// Extract human message IDs from the chain
-					// These are the parent message IDs we should filter memory by
-					const humanMessageIds = extractHumanMessageIds(messageChain);
-
-					// For regeneration, exclude the current parentMessageId from the lookup
-					// since we don't want memory from the execution we're regenerating
-					if (excludeCurrentFromMemory) {
-						const index = humanMessageIds.indexOf(parentMessageId);
-						if (index !== -1) {
-							humanMessageIds.splice(index, 1);
-						}
-						logger.debug('Excluding current parentMessageId from memory lookup (regeneration)', {
-							sessionId,
-							memoryNodeId,
-							parentMessageId,
-							humanMessageIds,
-						});
-					} else {
-						// Include the current parentMessageId if it's not already in the chain
-						// (it should be, but just in case)
-						if (!humanMessageIds.includes(parentMessageId)) {
-							humanMessageIds.push(parentMessageId);
-						}
-					}
-
-					// If no human message IDs remain after exclusion, return empty memory
-					if (humanMessageIds.length === 0) {
-						return [];
-					}
-
-					// Load memory entries for this node filtered by the human message chain
-					const memoryEntries = await memoryRepository.getMemoryByParentMessageIds(
-						sessionId,
-						memoryNodeId,
-						humanMessageIds,
-					);
-
-					return memoryEntries.map((entry) => ({
-						id: entry.id,
-						role: entry.role,
-						content: entry.content,
-						name: entry.name,
-						createdAt: entry.createdAt,
-					}));
+				if (chatMessages.length === 0) {
+					return [];
 				}
 
-				// No parentMessageId (manual execution / execution outside Chat Hub) - load all memory for this node
-				const memoryEntries = await memoryRepository.getAllMemoryForNode(sessionId, memoryNodeId);
+				// Build the message chain - this automatically excludes superseded messages
+				// (those that have been replaced by edits or retries)
+				const messageChain = buildMessageHistory(chatMessages);
+
+				// Extract turn IDs from AI messages in the chain
+				// Memory entries are linked by turnId, so we load memory
+				// for all non-superseded AI messages in the conversation
+				const turnIds = extractTurnIds(messageChain);
+
+				if (turnIds.length === 0) {
+					// No AI messages yet (first message in conversation)
+					return [];
+				}
+
+				logger.debug('Loading memory for turns in chain', {
+					sessionId,
+					memoryNodeId,
+					turnIds,
+				});
+
+				// Load memory entries for this node filtered by the turn IDs
+				const memoryEntries = await memoryRepository.getMemoryByTurnIds(
+					sessionId,
+					memoryNodeId,
+					turnIds,
+				);
 
 				return memoryEntries.map((entry) => ({
 					id: entry.id,
@@ -225,33 +162,41 @@ export class ChatHubProxyService implements ChatHubProxyProvider {
 			},
 
 			async addHumanMessage(content: string): Promise<void> {
-				const parentMessageId = await resolveParentMessageId();
 				const id = uuid();
 				await memoryRepository.createMemoryEntry({
 					id,
 					sessionId,
 					memoryNodeId,
-					parentMessageId,
+					turnId: executionTurnId,
 					role: 'human',
 					content,
 					name: 'User',
 				});
-				logger.debug('Added human message to memory', { sessionId, memoryNodeId, memoryId: id });
+				logger.debug('Added human message to memory', {
+					sessionId,
+					memoryNodeId,
+					memoryId: id,
+					turnId: executionTurnId,
+				});
 			},
 
 			async addAIMessage(content: string): Promise<void> {
-				const parentMessageId = await resolveParentMessageId();
 				const id = uuid();
 				await memoryRepository.createMemoryEntry({
 					id,
 					sessionId,
 					memoryNodeId,
-					parentMessageId,
+					turnId: executionTurnId,
 					role: 'ai',
 					content,
 					name: 'AI',
 				});
-				logger.debug('Added AI message to memory', { sessionId, memoryNodeId, memoryId: id });
+				logger.debug('Added AI message to memory', {
+					sessionId,
+					memoryNodeId,
+					memoryId: id,
+					turnId: executionTurnId,
+				});
 			},
 
 			async addToolMessage(
@@ -260,7 +205,6 @@ export class ChatHubProxyService implements ChatHubProxyProvider {
 				toolInput: unknown,
 				toolOutput: unknown,
 			): Promise<void> {
-				const parentMessageId = await resolveParentMessageId();
 				const id = uuid();
 				const content = JSON.stringify({
 					toolCallId,
@@ -273,7 +217,7 @@ export class ChatHubProxyService implements ChatHubProxyProvider {
 					id,
 					sessionId,
 					memoryNodeId,
-					parentMessageId,
+					turnId: executionTurnId,
 					role: 'tool',
 					content,
 					name: toolName,
@@ -283,6 +227,7 @@ export class ChatHubProxyService implements ChatHubProxyProvider {
 					memoryNodeId,
 					memoryId: id,
 					toolName,
+					turnId: executionTurnId,
 				});
 			},
 
