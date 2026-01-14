@@ -4,13 +4,29 @@ import { HumanMessage, AIMessage, SystemMessage, ToolMessage } from '@langchain/
 import type { IChatHubMemoryService, ChatHubMemoryEntry } from 'n8n-workflow';
 
 /**
- * Structure for storing AI messages that include tool calls.
- * When an AI message has tool_calls, we serialize it as JSON including both
- * the content and the tool_calls array, so they can be properly reconstructed.
+ * Structure for storing human messages as JSON.
  */
-interface StoredAIMessageWithToolCalls {
+interface StoredHumanMessage {
+	content: string;
+}
+
+/**
+ * Structure for storing AI messages as JSON.
+ * Includes tool_calls array so ToolMessages can be properly matched when reconstructing history.
+ */
+interface StoredAIMessage {
 	content: string;
 	toolCalls: ToolCall[];
+}
+
+/**
+ * Structure for storing tool messages as JSON.
+ */
+interface StoredToolMessage {
+	toolCallId: string;
+	toolName: string;
+	toolInput: unknown;
+	toolOutput: unknown;
 }
 
 /**
@@ -36,8 +52,10 @@ export class ChatHubMessageHistory extends BaseChatMessageHistory {
 
 	private convertToLangChainMessage(entry: ChatHubMemoryEntry): BaseMessage {
 		switch (entry.role) {
-			case 'human':
-				return new HumanMessage({ content: entry.content, name: entry.name ?? undefined });
+			case 'human': {
+				const humanData = this.parseHumanMessageContent(entry.content);
+				return new HumanMessage({ content: humanData.content, name: entry.name ?? undefined });
+			}
 
 			case 'ai': {
 				const aiData = this.parseAIMessageContent(entry.content);
@@ -68,11 +86,27 @@ export class ChatHubMessageHistory extends BaseChatMessageHistory {
 	}
 
 	/**
+	 * Parse human message content stored as JSON: { content: "..." }
+	 */
+	private parseHumanMessageContent(content: string): { content: string } {
+		try {
+			const parsed = JSON.parse(content) as StoredHumanMessage;
+			return {
+				content:
+					typeof parsed.content === 'string' ? parsed.content : JSON.stringify(parsed.content),
+			};
+		} catch {
+			// Fallback for malformed data
+			return { content };
+		}
+	}
+
+	/**
 	 * Parse AI message content stored as JSON: { content: "...", toolCalls: [...] }
 	 */
 	private parseAIMessageContent(content: string): { content: string; toolCalls: ToolCall[] } {
 		try {
-			const parsed = JSON.parse(content) as StoredAIMessageWithToolCalls;
+			const parsed = JSON.parse(content) as StoredAIMessage;
 			return {
 				content:
 					typeof parsed.content === 'string' ? parsed.content : JSON.stringify(parsed.content),
@@ -84,16 +118,14 @@ export class ChatHubMessageHistory extends BaseChatMessageHistory {
 		}
 	}
 
-	private parseToolMessageContent(content: string): {
-		toolCallId: string;
-		toolName: string;
-		toolInput: unknown;
-		toolOutput: unknown;
-	} {
+	/**
+	 * Parse tool message content stored as JSON.
+	 */
+	private parseToolMessageContent(content: string): StoredToolMessage {
 		try {
-			return JSON.parse(content);
+			return JSON.parse(content) as StoredToolMessage;
 		} catch {
-			// Fallback for malformed tool messages
+			// Fallback for malformed data
 			return {
 				toolCallId: 'unknown',
 				toolName: 'unknown',
@@ -109,12 +141,11 @@ export class ChatHubMessageHistory extends BaseChatMessageHistory {
 			typeof message.content === 'string' ? message.content : JSON.stringify(message.content);
 
 		if (messageType === 'human') {
-			await this.memoryService.addHumanMessage(content);
+			const storedContent: StoredHumanMessage = { content };
+			await this.memoryService.addHumanMessage(JSON.stringify(storedContent));
 		} else if (messageType === 'ai') {
 			const aiMsg = message as AIMessage;
-			// Store AI messages as JSON with content and tool_calls
-			// This ensures ToolMessages can be properly matched when reconstructing history
-			const storedContent: StoredAIMessageWithToolCalls = {
+			const storedContent: StoredAIMessage = {
 				content,
 				toolCalls: aiMsg.tool_calls ?? [],
 			};
