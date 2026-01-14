@@ -10,6 +10,7 @@ import {
 import { v4 as uuid } from 'uuid';
 
 import { buildMessageHistory, extractTurnIds } from './chat-hub-history.utils';
+import { ChatHubMemory } from './chat-hub-memory.entity';
 import { ChatHubMemoryRepository } from './chat-hub-memory.repository';
 import { ChatHubMessageRepository } from './chat-message.repository';
 import { ChatHubSessionRepository } from './chat-session.repository';
@@ -98,7 +99,7 @@ export class ChatHubProxyService implements ChatHubProxyProvider {
 	private makeChatHubOperations(
 		sessionId: string,
 		memoryNodeId: string,
-		executionTurnId: string | null,
+		providedTurnId: string | null,
 		ownerId: string,
 		workflowId: string | undefined,
 		agentName: string,
@@ -110,7 +111,8 @@ export class ChatHubProxyService implements ChatHubProxyProvider {
 
 		// turnId is a correlation ID generated BEFORE workflow execution starts.
 		// It links memory entries created during this execution to the AI message that will be saved later.
-		// For manual executions (turnId is null), we don't link to any message.
+		// For manual executions (turnId is null), we generate a random one to enable basic linear history.
+		const turnId = providedTurnId ?? uuid();
 
 		return {
 			getOwnerId() {
@@ -118,39 +120,49 @@ export class ChatHubProxyService implements ChatHubProxyProvider {
 			},
 
 			async getMemory(): Promise<ChatHubMemoryEntry[]> {
-				// Get all chat messages for the session
-				const chatMessages = await messageRepository.getManyBySessionId(sessionId);
+				let memoryEntries: ChatHubMemory[];
 
-				if (chatMessages.length === 0) {
-					return [];
+				if (providedTurnId === null) {
+					// Manual execution: load ALL memory for this session+node (simple linear history)
+					logger.debug('Loading all memory for node (manual execution)', {
+						sessionId,
+						memoryNodeId,
+					});
+					memoryEntries = await memoryRepository.getAllMemoryForNode(sessionId, memoryNodeId);
+				} else {
+					// Chat Hub execution: use turnId-based filtering for edit/retry branching
+					const chatMessages = await messageRepository.getManyBySessionId(sessionId);
+
+					if (chatMessages.length === 0) {
+						return [];
+					}
+
+					// Build the message chain - this automatically excludes superseded messages
+					// (those that have been replaced by edits or retries)
+					const messageChain = buildMessageHistory(chatMessages);
+
+					// Extract turn IDs from AI messages in the chain
+					// Memory entries are linked by turnId, so we load memory
+					// for all non-superseded AI messages in the conversation
+					const turnIds = extractTurnIds(messageChain);
+
+					if (turnIds.length === 0) {
+						// No AI messages yet (first message in conversation)
+						return [];
+					}
+
+					logger.debug('Loading memory for turns in chain', {
+						sessionId,
+						memoryNodeId,
+						turnIds,
+					});
+
+					memoryEntries = await memoryRepository.getMemoryByTurnIds(
+						sessionId,
+						memoryNodeId,
+						turnIds,
+					);
 				}
-
-				// Build the message chain - this automatically excludes superseded messages
-				// (those that have been replaced by edits or retries)
-				const messageChain = buildMessageHistory(chatMessages);
-
-				// Extract turn IDs from AI messages in the chain
-				// Memory entries are linked by turnId, so we load memory
-				// for all non-superseded AI messages in the conversation
-				const turnIds = extractTurnIds(messageChain);
-
-				if (turnIds.length === 0) {
-					// No AI messages yet (first message in conversation)
-					return [];
-				}
-
-				logger.debug('Loading memory for turns in chain', {
-					sessionId,
-					memoryNodeId,
-					turnIds,
-				});
-
-				// Load memory entries for this node filtered by the turn IDs
-				const memoryEntries = await memoryRepository.getMemoryByTurnIds(
-					sessionId,
-					memoryNodeId,
-					turnIds,
-				);
 
 				return memoryEntries.map((entry) => ({
 					id: entry.id,
@@ -167,7 +179,7 @@ export class ChatHubProxyService implements ChatHubProxyProvider {
 					id,
 					sessionId,
 					memoryNodeId,
-					turnId: executionTurnId,
+					turnId,
 					role: 'human',
 					content,
 					name: 'User',
@@ -176,7 +188,7 @@ export class ChatHubProxyService implements ChatHubProxyProvider {
 					sessionId,
 					memoryNodeId,
 					memoryId: id,
-					turnId: executionTurnId,
+					turnId,
 				});
 			},
 
@@ -186,7 +198,7 @@ export class ChatHubProxyService implements ChatHubProxyProvider {
 					id,
 					sessionId,
 					memoryNodeId,
-					turnId: executionTurnId,
+					turnId,
 					role: 'ai',
 					content,
 					name: 'AI',
@@ -195,7 +207,7 @@ export class ChatHubProxyService implements ChatHubProxyProvider {
 					sessionId,
 					memoryNodeId,
 					memoryId: id,
-					turnId: executionTurnId,
+					turnId,
 				});
 			},
 
@@ -217,7 +229,7 @@ export class ChatHubProxyService implements ChatHubProxyProvider {
 					id,
 					sessionId,
 					memoryNodeId,
-					turnId: executionTurnId,
+					turnId,
 					role: 'tool',
 					content,
 					name: toolName,
@@ -227,7 +239,7 @@ export class ChatHubProxyService implements ChatHubProxyProvider {
 					memoryNodeId,
 					memoryId: id,
 					toolName,
-					turnId: executionTurnId,
+					turnId,
 				});
 			},
 
@@ -236,11 +248,10 @@ export class ChatHubProxyService implements ChatHubProxyProvider {
 				logger.debug('Cleared memory for node', { sessionId, memoryNodeId });
 			},
 
-			async ensureSession(title?: string): Promise<void> {
+			async ensureSession(): Promise<void> {
 				const exists = await sessionRepository.existsById(sessionId, ownerId);
 				if (!exists) {
-					// Use provided title, or fall back to agentName from workflow
-					const sessionTitle = title || agentName;
+					const sessionTitle = agentName;
 					await sessionRepository.createChatSession({
 						id: sessionId,
 						ownerId,

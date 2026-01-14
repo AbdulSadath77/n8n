@@ -105,8 +105,8 @@ export class MemoryChatHub implements INodeType {
 
 		// Get the Chat Hub proxy
 		// turnId is a correlation ID generated before execution starts.
-		// Memory entries created during this turn share this turnId with the AI message.
-		// For manual executions (null), memory will be loaded for all AI messages in the conversation.
+		// When provided by Chat Hub, it links memory entries to the AI message for edit/retry support.
+		// When null (manual executions), the proxy generates a random one to enable basic linear history.
 		const memoryService = await this.helpers.getChatHubProxy?.(sessionId, memoryNodeId, turnId);
 
 		if (!memoryService) {
