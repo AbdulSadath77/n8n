@@ -382,8 +382,8 @@ const workflowRunErrorAsNodeError = computed(() => {
 
 	const selfTaskData = workflowRunData.value?.[node.value.name]?.[props.runIndex];
 
-	if (!selfTaskData && isSubNodeType.value && isPaneTypeInput.value) {
-		return parentNodeError.value;
+	if (isSubNodeType.value && isPaneTypeInput.value) {
+		return null;
 	}
 	return selfTaskData?.error as NodeError;
 });

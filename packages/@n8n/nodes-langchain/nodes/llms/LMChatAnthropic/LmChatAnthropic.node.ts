@@ -373,13 +373,14 @@ export class LmChatAnthropic implements INodeType {
 		}
 
 		if (version >= 1.4) {
-			// Add PDF support at ver 1.4
+			// Add PDF support for >= 1.4
 			model[BinaryDataToContentBlockFnKey] = async (ctx, data) => {
 				if (isDocumentFile(data.mimeType)) {
 					const bufferData = data.id
 						? await ctx.helpers.binaryToBuffer(await ctx.helpers.getBinaryStream(data.id))
 						: data.data.replace(/^base64,/, '');
 
+					// https://platform.claude.com/docs/en/build-with-claude/pdf-support#option-2-base64-encoded-pdf-document
 					return {
 						type: 'document',
 						source: {

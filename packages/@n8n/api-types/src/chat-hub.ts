@@ -224,7 +224,7 @@ export const chatModelsRequestSchema = z.object({
 
 export type ChatModelsRequest = z.infer<typeof chatModelsRequestSchema>;
 
-export type ChatHubInputModality = 'text' | 'image' | 'audio' | 'video' | 'file';
+export type ChatHubInputModality = 'text' | 'image' | 'audio' | 'video' | 'pdf' | 'file';
 
 export interface ChatModelMetadataDto {
 	inputModalities: ChatHubInputModality[];

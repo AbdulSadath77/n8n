@@ -17,7 +17,7 @@ export const CHAT_TRIGGER_NODE_MIN_VERSION = 1.2;
 export const PROVIDER_NODE_TYPE_MAP: Record<ChatHubLLMProvider, INodeTypeNameVersion> = {
 	openai: {
 		name: '@n8n/n8n-nodes-langchain.lmChatOpenAi',
-		version: 1.3,
+		version: 1.4,
 	},
 	anthropic: {
 		name: '@n8n/n8n-nodes-langchain.lmChatAnthropic',
@@ -25,7 +25,7 @@ export const PROVIDER_NODE_TYPE_MAP: Record<ChatHubLLMProvider, INodeTypeNameVer
 	},
 	google: {
 		name: '@n8n/n8n-nodes-langchain.lmChatGoogleGemini',
-		version: 1.2,
+		version: 1.1,
 	},
 	ollama: {
 		name: '@n8n/n8n-nodes-langchain.lmChatOllama',
@@ -107,37 +107,37 @@ const MODEL_METADATA_REGISTRY: Partial<
 > = {
 	anthropic: {
 		'claude-3-5-haiku-20241022': {
-			inputModalities: ['text', 'image'],
+			inputModalities: ['text', 'image', 'file'],
 		},
 		'claude-3-haiku-20240307': {
-			inputModalities: ['text', 'image'],
+			inputModalities: ['text', 'image', 'file'],
 		},
 		'claude-3-opus-20240229': {
-			inputModalities: ['text', 'image'],
+			inputModalities: ['text', 'image', 'file'],
 		},
 		'claude-3-sonnet-20240229': {
-			inputModalities: ['text', 'image'],
+			inputModalities: ['text', 'image', 'file'],
 		},
 		'claude-3-5-sonnet-20241022': {
-			inputModalities: ['text', 'image'],
+			inputModalities: ['text', 'image', 'file'],
 		},
 		'claude-3-7-sonnet-20250219': {
-			inputModalities: ['text', 'image'],
+			inputModalities: ['text', 'image', 'file'],
 		},
 		'claude-sonnet-4-20250514': {
-			inputModalities: ['text', 'image'],
+			inputModalities: ['text', 'image', 'file'],
 		},
 		'claude-sonnet-4-5-20250929': {
-			inputModalities: ['text', 'image'],
+			inputModalities: ['text', 'image', 'file'],
 		},
 		'claude-haiku-4-5-20251001': {
 			inputModalities: ['text', 'image', 'file'],
 		},
 		'claude-opus-4-20250514': {
-			inputModalities: ['text', 'image'],
+			inputModalities: ['text', 'image', 'file'],
 		},
 		'claude-opus-4-1-20250805': {
-			inputModalities: ['text', 'image'],
+			inputModalities: ['text', 'image', 'file'],
 		},
 	},
 	openai: {
@@ -210,7 +210,7 @@ const MODEL_METADATA_REGISTRY: Partial<
 			inputModalities: ['text'],
 		},
 		'gpt-4-turbo': {
-			inputModalities: ['text', 'image'],
+			inputModalities: ['text', 'image', 'pdf'],
 		},
 		'o1-mini': {
 			inputModalities: ['text'],
@@ -362,7 +362,7 @@ const MODEL_METADATA_REGISTRY: Partial<
 		},
 		// Gemini 2.5 Flash series
 		'models/gemini-2.5-flash': {
-			inputModalities: ['text', 'image', 'video', 'audio'],
+			inputModalities: ['text', 'image', 'video', 'audio', 'file'],
 		},
 		'models/gemini-2.5-flash-preview-04-17': {
 			inputModalities: ['text', 'image', 'video', 'audio'],
