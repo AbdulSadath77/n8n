@@ -10,6 +10,7 @@ import {
 	UserError,
 	CHAT_TRIGGER_NODE_TYPE,
 	CHAT_HUB_MEMORY_TYPE,
+	IToolCall,
 } from 'n8n-workflow';
 import { v4 as uuid } from 'uuid';
 
@@ -145,9 +146,7 @@ export class ChatHubProxyService implements ChatHubProxyProvider {
 					// Memory entries are linked by turnId, so we load memory
 					// for all non-superseded AI messages in the conversation
 					const turnIds = extractTurnIds(messageChain);
-
 					if (turnIds.length === 0) {
-						// No AI messages yet (first message in conversation)
 						return [];
 					}
 
@@ -181,7 +180,7 @@ export class ChatHubProxyService implements ChatHubProxyProvider {
 					memoryNodeId,
 					turnId,
 					role: 'human',
-					content,
+					content: { content },
 					name: 'User',
 				});
 				logger.debug('Added human message to memory', {
@@ -192,7 +191,7 @@ export class ChatHubProxyService implements ChatHubProxyProvider {
 				});
 			},
 
-			async addAIMessage(content: string): Promise<void> {
+			async addAIMessage(content: string, toolCalls: IToolCall[]): Promise<void> {
 				const id = uuid();
 				await memoryRepository.createMemoryEntry({
 					id,
@@ -200,7 +199,7 @@ export class ChatHubProxyService implements ChatHubProxyProvider {
 					memoryNodeId,
 					turnId,
 					role: 'ai',
-					content,
+					content: { content, toolCalls },
 					name: 'AI',
 				});
 				logger.debug('Added AI message to memory', {
@@ -218,20 +217,13 @@ export class ChatHubProxyService implements ChatHubProxyProvider {
 				toolOutput: unknown,
 			): Promise<void> {
 				const id = uuid();
-				const content = JSON.stringify({
-					toolCallId,
-					toolName,
-					toolInput,
-					toolOutput,
-				});
-
 				await memoryRepository.createMemoryEntry({
 					id,
 					sessionId,
 					memoryNodeId,
 					turnId,
 					role: 'tool',
-					content,
+					content: { toolCallId, toolName, toolInput, toolOutput },
 					name: toolName,
 				});
 				logger.debug('Added tool message to memory', {

@@ -1,33 +1,14 @@
 import { BaseChatMessageHistory } from '@langchain/core/chat_history';
-import type { BaseMessage, ToolCall } from '@langchain/core/messages';
+import type { BaseMessage } from '@langchain/core/messages';
 import { HumanMessage, AIMessage, SystemMessage, ToolMessage } from '@langchain/core/messages';
-import type { IChatHubMemoryService, ChatHubMemoryEntry } from 'n8n-workflow';
-
-/**
- * Structure for storing human messages as JSON.
- */
-interface StoredHumanMessage {
-	content: string;
-}
-
-/**
- * Structure for storing AI messages as JSON.
- * Includes tool_calls array so ToolMessages can be properly matched when reconstructing history.
- */
-interface StoredAIMessage {
-	content: string;
-	toolCalls: ToolCall[];
-}
-
-/**
- * Structure for storing tool messages as JSON.
- */
-interface StoredToolMessage {
-	toolCallId: string;
-	toolName: string;
-	toolInput: unknown;
-	toolOutput: unknown;
-}
+import type {
+	IChatHubMemoryService,
+	ChatHubMemoryEntry,
+	StoredHumanMessage,
+	StoredAIMessage,
+	StoredSystemMessage,
+	StoredToolMessage,
+} from 'n8n-workflow';
 
 /**
  * LangChain message history implementation that uses n8n's Chat Hub memory.
@@ -53,113 +34,141 @@ export class ChatHubMessageHistory extends BaseChatMessageHistory {
 	private convertToLangChainMessage(entry: ChatHubMemoryEntry): BaseMessage {
 		switch (entry.role) {
 			case 'human': {
-				const humanData = this.parseHumanMessageContent(entry.content);
-				return new HumanMessage({ content: humanData.content, name: entry.name ?? undefined });
+				return this.asHumanMessage(entry);
 			}
 
 			case 'ai': {
-				const aiData = this.parseAIMessageContent(entry.content);
-				return new AIMessage({
-					content: aiData.content,
-					name: entry.name ?? undefined,
-					tool_calls: aiData.toolCalls,
-				});
+				return this.asAIMessage(entry);
 			}
-
-			case 'system':
-				return new SystemMessage({ content: entry.content });
 
 			case 'tool': {
-				// Parse tool message content
-				const toolData = this.parseToolMessageContent(entry.content);
-				return new ToolMessage({
-					content: JSON.stringify(toolData.toolOutput),
-					tool_call_id: toolData.toolCallId,
-					name: toolData.toolName,
-				});
+				return this.asToolMessage(entry);
 			}
 
-			default:
+			case 'system': {
+				return this.asSystemMessage(entry);
+			}
+
+			default: {
 				// Unknown role treated as system
-				return new SystemMessage({ content: entry.content });
+				return this.asSystemMessage(entry);
+			}
 		}
 	}
 
-	/**
-	 * Parse human message content stored as JSON: { content: "..." }
-	 */
-	private parseHumanMessageContent(content: string): { content: string } {
-		try {
-			const parsed = JSON.parse(content) as StoredHumanMessage;
-			return {
-				content:
-					typeof parsed.content === 'string' ? parsed.content : JSON.stringify(parsed.content),
-			};
-		} catch {
-			// Fallback for malformed data
-			return { content };
+	private isHumanMessage(content: unknown): content is StoredHumanMessage {
+		return (
+			typeof content === 'object' &&
+			content !== null &&
+			'content' in content &&
+			typeof content.content === 'string'
+		);
+	}
+
+	private isAIMessage(content: unknown): content is StoredAIMessage {
+		return (
+			typeof content === 'object' &&
+			content !== null &&
+			'content' in content &&
+			typeof content.content === 'string' &&
+			'toolCalls' in content &&
+			Array.isArray(content.toolCalls)
+		);
+	}
+
+	private isToolMessage(content: unknown): content is StoredToolMessage {
+		return (
+			typeof content === 'object' &&
+			content !== null &&
+			'toolCallId' in content &&
+			'toolName' in content &&
+			'toolInput' in content &&
+			'toolOutput' in content
+		);
+	}
+
+	private isSystemMessage(content: unknown): content is StoredSystemMessage {
+		return (
+			typeof content === 'object' &&
+			content !== null &&
+			'content' in content &&
+			typeof content.content === 'string'
+		);
+	}
+
+	private asHumanMessage(entry: ChatHubMemoryEntry): HumanMessage {
+		if (this.isHumanMessage(entry.content)) {
+			const humanData = entry.content;
+			return new HumanMessage({ content: humanData.content, name: undefined });
+		} else {
+			return new HumanMessage({
+				content: JSON.stringify(entry.content),
+				name: undefined,
+			});
 		}
 	}
 
-	/**
-	 * Parse AI message content stored as JSON: { content: "...", toolCalls: [...] }
-	 */
-	private parseAIMessageContent(content: string): { content: string; toolCalls: ToolCall[] } {
-		try {
-			const parsed = JSON.parse(content) as StoredAIMessage;
-			return {
-				content:
-					typeof parsed.content === 'string' ? parsed.content : JSON.stringify(parsed.content),
-				toolCalls: parsed.toolCalls ?? [],
-			};
-		} catch {
-			// Fallback for malformed data
-			return { content, toolCalls: [] };
+	private asAIMessage(entry: ChatHubMemoryEntry): AIMessage {
+		if (this.isAIMessage(entry.content)) {
+			const aiData = entry.content;
+			return new AIMessage({
+				content: aiData.content,
+				tool_calls: aiData.toolCalls,
+				name: undefined,
+			});
+		} else {
+			return new AIMessage({
+				content: JSON.stringify(entry.content),
+				name: undefined,
+			});
 		}
 	}
 
-	/**
-	 * Parse tool message content stored as JSON.
-	 */
-	private parseToolMessageContent(content: string): StoredToolMessage {
-		try {
-			return JSON.parse(content) as StoredToolMessage;
-		} catch {
-			// Fallback for malformed data
-			return {
-				toolCallId: 'unknown',
-				toolName: 'unknown',
-				toolInput: {},
-				toolOutput: content,
-			};
+	private asToolMessage(entry: ChatHubMemoryEntry): ToolMessage {
+		if (this.isToolMessage(entry.content)) {
+			const toolData = entry.content;
+			return new ToolMessage({
+				content: JSON.stringify(toolData.toolOutput),
+				tool_call_id: toolData.toolCallId,
+				name: toolData.toolName,
+			});
+		} else {
+			return new ToolMessage({
+				content: JSON.stringify(entry.content),
+				tool_call_id: 'unknown',
+				name: 'unknown',
+			});
+		}
+	}
+
+	private asSystemMessage(entry: ChatHubMemoryEntry): SystemMessage {
+		if (this.isSystemMessage(entry.content)) {
+			const systemData = entry.content;
+			return new SystemMessage({ content: systemData.content });
+		} else {
+			return new SystemMessage({ content: JSON.stringify(entry.content) });
 		}
 	}
 
 	async addMessage(message: BaseMessage): Promise<void> {
-		const messageType = message._getType();
 		const content =
 			typeof message.content === 'string' ? message.content : JSON.stringify(message.content);
 
-		if (messageType === 'human') {
-			const storedContent: StoredHumanMessage = { content };
-			await this.memoryService.addHumanMessage(JSON.stringify(storedContent));
-		} else if (messageType === 'ai') {
-			const aiMsg = message as AIMessage;
-			const storedContent: StoredAIMessage = {
-				content,
-				toolCalls: aiMsg.tool_calls ?? [],
-			};
-			await this.memoryService.addAIMessage(JSON.stringify(storedContent));
-		} else if (messageType === 'tool') {
-			const toolMsg = message as ToolMessage;
+		if (message.type === 'human' && message instanceof HumanMessage) {
+			await this.memoryService.addHumanMessage(content);
+		} else if (message.type === 'ai' && message instanceof AIMessage) {
+			const toolCalls = message.tool_calls ?? [];
+			await this.memoryService.addAIMessage(content, toolCalls);
+		} else if (message.type === 'tool' && message instanceof ToolMessage) {
+			const toolMessage = message as ToolMessage;
 			await this.memoryService.addToolMessage(
-				toolMsg.tool_call_id,
-				toolMsg.name ?? 'unknown',
+				toolMessage.tool_call_id,
+				toolMessage.name ?? 'unknown',
 				{}, // Input not available from ToolMessage
-				typeof toolMsg.content === 'string' ? toolMsg.content : toolMsg.content,
+				typeof toolMessage.content === 'string' ? toolMessage.content : toolMessage.content,
 			);
 		}
-		// System messages are typically not saved in conversation history
+		// System messages are not saved in conversation history
 	}
 
 	async addMessages(messages: BaseMessage[]): Promise<void> {

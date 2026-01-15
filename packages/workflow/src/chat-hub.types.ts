@@ -2,6 +2,48 @@ export type ChatHubMessageType = 'human' | 'ai' | 'system' | 'tool' | 'generic';
 export type ChatHubMessageStatus = 'success' | 'error' | 'running' | 'cancelled' | 'waiting';
 export type ChatHubMemoryRole = 'human' | 'ai' | 'system' | 'tool';
 
+// Structure for storing @langchain/core/messages ToolCall details
+export interface IToolCall {
+	name: string;
+	args: Record<string, unknown>;
+}
+
+/**
+ * Structure for storing human messages as JSON.
+ */
+export interface StoredHumanMessage {
+	content: string;
+}
+
+/**
+ * Structure for storing AI messages as JSON.
+ * Includes tool_calls array so ToolMessages can be properly matched when reconstructing history.
+ */
+export interface StoredAIMessage {
+	content: string;
+	toolCalls: IToolCall[];
+}
+
+/**
+ * Structure for storing tool messages as JSON.
+ */
+export interface StoredToolMessage {
+	toolCallId: string;
+	toolName: string;
+	toolInput: unknown;
+	toolOutput: unknown;
+}
+
+export interface StoredSystemMessage {
+	content: string;
+}
+
+export type StoredMessage =
+	| StoredHumanMessage
+	| StoredAIMessage
+	| StoredToolMessage
+	| StoredSystemMessage;
+
 /**
  * Message structure returned from Chat Hub for memory reconstruction.
  * Includes the chain tracking fields for proper history building.
@@ -27,8 +69,8 @@ export interface ChatHubMemoryMessage {
 export interface ChatHubMemoryEntry {
 	id: string;
 	role: ChatHubMemoryRole;
-	content: string;
-	name: string | null;
+	content: StoredMessage;
+	name: string;
 	createdAt: Date;
 }
 
@@ -59,7 +101,7 @@ export interface IChatHubMemoryService {
 	 * Add an AI message to memory.
 	 * Called when the agent produces a response.
 	 */
-	addAIMessage(content: string): Promise<void>;
+	addAIMessage(content: string, toolCalls: IToolCall[]): Promise<void>;
 
 	/**
 	 * Add a tool call/result message to memory.

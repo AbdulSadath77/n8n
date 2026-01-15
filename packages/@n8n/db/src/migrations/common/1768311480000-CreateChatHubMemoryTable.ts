@@ -33,8 +33,8 @@ export class CreateChatHubMemoryTable1768311480000 implements ReversibleMigratio
 					'Correlation ID linking memory to an AI message turn (no FK constraint)',
 				),
 				column('role').varchar(16).notNull.comment('Role: "human", "ai", "system", "tool"'),
-				column('content').text.notNull,
-				column('name').varchar(128).comment('Actor name, tool name for tool messages'),
+				column('content').json.notNull,
+				column('name').varchar(256).notNull.comment('Actor name, tool name for tool messages'),
 			)
 			.withForeignKey('sessionId', {
 				tableName: table.sessions,

@@ -72,22 +72,6 @@ export class MemoryChatHub implements INodeType {
 				default: '',
 				description: 'Correlation ID for this execution turn (set by Chat Hub)',
 			},
-			{
-				displayName: 'Options',
-				name: 'options',
-				type: 'collection',
-				default: {},
-				placeholder: 'Add Option',
-				options: [
-					{
-						displayName: 'Auto-Create Session',
-						name: 'autoCreateSession',
-						type: 'boolean',
-						default: true,
-						description: 'Whether to automatically create a Chat Hub session if one does not exist',
-					},
-				],
-			},
 		],
 	};
 
@@ -95,9 +79,6 @@ export class MemoryChatHub implements INodeType {
 		const sessionId = getSessionId(this, itemIndex);
 		const contextWindowLength = this.getNodeParameter('contextWindowLength', itemIndex) as number;
 		const turnId = (this.getNodeParameter('turnId', itemIndex, '') as string) || null;
-		const options = this.getNodeParameter('options', itemIndex, {}) as {
-			autoCreateSession?: boolean;
-		};
 
 		// Get the node's internal ID to use as memoryNodeId
 		const node = this.getNode();
@@ -107,7 +88,7 @@ export class MemoryChatHub implements INodeType {
 		// turnId is a correlation ID generated before execution starts.
 		// When provided by Chat Hub, it links memory entries to the AI message for edit/retry support.
 		// When null (manual executions), the proxy generates a random one to enable basic linear history.
-		const memoryService = await this.helpers.getChatHubProxy?.(sessionId, memoryNodeId, turnId);
+		const memoryService = this.helpers.getChatHubProxy?.(sessionId, memoryNodeId, turnId);
 
 		if (!memoryService) {
 			throw new NodeOperationError(
@@ -116,10 +97,8 @@ export class MemoryChatHub implements INodeType {
 			);
 		}
 
-		// Auto-create session if needed
-		if (options.autoCreateSession !== false) {
-			await memoryService.ensureSession();
-		}
+		// Auto-create session if needed (manual executions)
+		await memoryService.ensureSession();
 
 		const chatHistory = new ChatHubMessageHistory({
 			memoryService,

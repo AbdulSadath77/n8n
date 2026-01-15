@@ -7,6 +7,7 @@ import {
 	type Relation,
 	PrimaryGeneratedColumn,
 } from '@n8n/typeorm';
+import { StoredMessage } from 'n8n-workflow';
 
 import type { ChatHubSession } from './chat-hub-session.entity';
 
@@ -49,7 +50,7 @@ export class ChatHubMemory extends WithTimestamps {
 	 * A "turn" represents one request-response execution cycle.
 	 * The turnId is generated BEFORE workflow execution starts and is shared
 	 * between memory entries created during the execution and the AI message.
-	 * NULL for manual executions.
+	 * NULL for manual executions. There is no FK constraint to chat_hub_messages.
 	 */
 	@Column({ type: String, nullable: true })
 	turnId: string | null;
@@ -64,12 +65,12 @@ export class ChatHubMemory extends WithTimestamps {
 	 * The content of the memory entry.
 	 * For tool messages, this is JSON with tool call details.
 	 */
-	@Column('text')
-	content: string;
+	@Column({ type: 'json' })
+	content: StoredMessage;
 
 	/**
 	 * Name of the actor (for tool messages, this is the tool name).
 	 */
-	@Column({ type: 'varchar', length: 128, nullable: true })
-	name: string | null;
+	@Column({ type: 'varchar', length: 256 })
+	name: string;
 }

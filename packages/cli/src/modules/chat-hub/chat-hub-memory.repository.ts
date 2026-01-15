@@ -1,7 +1,7 @@
 import { Service } from '@n8n/di';
 import { DataSource, EntityManager, In, Repository } from '@n8n/typeorm';
 import type { QueryDeepPartialEntity } from '@n8n/typeorm/query-builder/QueryPartialEntity';
-import { UnexpectedError } from 'n8n-workflow';
+import { StoredMessage, UnexpectedError } from 'n8n-workflow';
 
 import { ChatHubMemory, type ChatHubMemoryRole } from './chat-hub-memory.entity';
 
@@ -11,8 +11,8 @@ export interface CreateMemoryEntryData {
 	memoryNodeId: string;
 	turnId: string | null;
 	role: ChatHubMemoryRole;
-	content: string;
-	name: string | null;
+	content: StoredMessage;
+	name: string;
 }
 
 @Service()
