@@ -1,6 +1,7 @@
 import { Service } from '@n8n/di';
 import { DataSource, EntityManager, Repository } from '@n8n/typeorm';
 
+import { ChatHubMessage } from './chat-hub-message.entity';
 import { ChatHubSession, IChatHubSession } from './chat-hub-session.entity';
 
 import { NotFoundError } from '@/errors/response-errors/not-found.error';
@@ -39,6 +40,17 @@ export class ChatHubSessionRepository extends Repository<ChatHubSession> {
 			.leftJoinAndSelect('session.workflow', 'workflow')
 			.leftJoinAndSelect('workflow.activeVersion', 'activeVersion')
 			.where('session.ownerId = :userId', { userId })
+			// Only show sessions that have at least one message
+			// (excludes sessions created by manual workflow executions with MemoryChatHub that only have memory entries)
+			.andWhere((qb) => {
+				const subQuery = qb
+					.subQuery()
+					.select('1')
+					.from(ChatHubMessage, 'msg')
+					.where('msg.sessionId = session.id')
+					.getQuery();
+				return `EXISTS ${subQuery}`;
+			})
 			.orderBy('session.lastMessageAt', 'DESC')
 			.addOrderBy('session.id', 'ASC');
 
