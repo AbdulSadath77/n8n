@@ -81,8 +81,8 @@ export interface ChatHubMemoryEntry {
  * - Proper branching on edit/retry via turnId linking
  */
 export interface IChatHubMemoryService {
-	/** Get session owner ID (the user who owns the session) */
-	getOwnerId(): string;
+	/** Get session owner ID (the user who owns the session), or undefined for anonymous sessions */
+	getOwnerId(): string | undefined;
 
 	/**
 	 * Get memory entries for this node.

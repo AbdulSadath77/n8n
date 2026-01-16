@@ -16,10 +16,14 @@ const table = {
  * The turnId is a correlation ID representing a single request-response execution cycle.
  * It's generated BEFORE workflow execution starts, so it can be used to link memory entries
  * to AI messages without requiring the AI message to exist first (avoiding FK constraint issues).
+ *
+ * Also makes ownerId nullable in chat_hub_sessions to enable anonymous sessions for:
+ * - Manual executions where userId is lost on resume (waiting state)
+ * - Public chat triggers (webhooks) with no authenticated user
  */
 export class CreateChatHubMemoryTable1768311480000 implements ReversibleMigration {
 	async up({
-		schemaBuilder: { createTable, addColumns, column, createIndex },
+		schemaBuilder: { createTable, addColumns, column, createIndex, dropNotNull },
 		runQuery,
 		escape,
 	}: MigrationContext) {
@@ -53,9 +57,17 @@ export class CreateChatHubMemoryTable1768311480000 implements ReversibleMigratio
 		await runQuery(
 			`UPDATE ${escape.tableName(table.messages)} SET ${escape.columnName('turnId')} = ${escape.columnName('id')} WHERE ${escape.columnName('type')} = 'ai'`,
 		);
+
+		// TODO: do we lose messages history on sqlite?
+
+		// Make ownerId nullable to support anonymous sessions
+		await dropNotNull(table.sessions, 'ownerId');
 	}
 
-	async down({ schemaBuilder: { dropTable, dropColumns, dropIndex } }: MigrationContext) {
+	async down({
+		schemaBuilder: { dropTable, dropColumns, dropIndex, addNotNull },
+	}: MigrationContext) {
+		await addNotNull(table.sessions, 'ownerId');
 		await dropColumns(table.messages, ['turnId']);
 		await dropIndex(table.memory, ['sessionId', 'memoryNodeId', 'turnId']);
 		await dropTable(table.memory);

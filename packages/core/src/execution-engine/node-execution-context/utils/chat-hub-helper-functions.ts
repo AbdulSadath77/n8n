@@ -3,12 +3,14 @@ import type {
 	INode,
 	Workflow,
 	IWorkflowExecuteAdditionalData,
+	WorkflowExecuteMode,
 } from 'n8n-workflow';
 
 export function getChatHubHelperFunctions(
 	additionalData: IWorkflowExecuteAdditionalData,
 	workflow: Workflow,
 	node: INode,
+	mode: WorkflowExecuteMode,
 ): Partial<ChatHubProxyFunctions> {
 	const chatHubProxyProvider = additionalData['chat-hub']?.chatHubProxyProvider;
 	if (!chatHubProxyProvider) return {};
@@ -26,7 +28,7 @@ export function getChatHubHelperFunctions(
 				memoryNodeId,
 				turnId,
 				previousTurnIds,
-				additionalData.userId,
+				mode === 'manual' ? undefined : additionalData.userId,
 			),
 	};
 }

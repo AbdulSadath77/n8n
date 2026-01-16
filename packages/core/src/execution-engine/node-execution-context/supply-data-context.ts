@@ -94,7 +94,7 @@ export class SupplyDataContext extends BaseExecuteContext implements ISupplyData
 			...getFileSystemHelperFunctions(node),
 			...getBinaryHelperFunctions(additionalData, workflow.id),
 			...getDataTableHelperFunctions(additionalData, workflow, node),
-			...getChatHubHelperFunctions(additionalData, workflow, node),
+			...getChatHubHelperFunctions(additionalData, workflow, node, mode),
 			...getDeduplicationHelperFunctions(workflow, node),
 			assertBinaryData: (itemIndex, propertyName) =>
 				assertBinaryData(inputData, node, itemIndex, propertyName, 0, workflow.settings.binaryMode),

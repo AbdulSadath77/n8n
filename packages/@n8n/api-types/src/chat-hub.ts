@@ -377,7 +377,7 @@ export type ChatMessageId = string; // UUID
 export interface ChatHubSessionDto {
 	id: ChatSessionId;
 	title: string;
-	ownerId: string;
+	ownerId: string | null;
 	lastMessageAt: string | null;
 	credentialId: string | null;
 	provider: ChatHubProvider | null;

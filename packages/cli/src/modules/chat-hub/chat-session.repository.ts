@@ -77,15 +77,28 @@ export class ChatHubSessionRepository extends Repository<ChatHubSession> {
 		return await queryBuilder.getMany();
 	}
 
-	async existsById(id: string, userId: string, trx?: EntityManager): Promise<boolean> {
+	async existsById(id: string, userId: string | undefined, trx?: EntityManager): Promise<boolean> {
 		const em = trx ?? this.manager;
-		return await em.exists(ChatHubSession, { where: { id, ownerId: userId } });
+		const session = await em.findOne(ChatHubSession, {
+			where: { id },
+			select: ['id', 'ownerId'],
+		});
+
+		if (!session) return false;
+
+		// If session has an owner, require userId to match
+		if (session.ownerId !== null) {
+			return session.ownerId === userId;
+		}
+
+		// Anonymous session - accessible by sessionId alone
+		return true;
 	}
 
-	async getOneById(id: string, userId: string, trx?: EntityManager) {
+	async getOneById(id: string, userId: string | undefined, trx?: EntityManager) {
 		const em = trx ?? this.manager;
-		return await em.findOne(ChatHubSession, {
-			where: { id, ownerId: userId },
+		const session = await em.findOne(ChatHubSession, {
+			where: { id },
 			relations: {
 				messages: true,
 				agent: true,
@@ -94,6 +107,15 @@ export class ChatHubSessionRepository extends Repository<ChatHubSession> {
 				},
 			},
 		});
+
+		if (!session) return null;
+
+		// If session has an owner, require userId to match
+		if (session.ownerId !== null && session.ownerId !== userId) {
+			return null;
+		}
+
+		return session;
 	}
 
 	async deleteAll(trx?: EntityManager) {

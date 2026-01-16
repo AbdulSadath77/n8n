@@ -7,7 +7,6 @@ import {
 	INode,
 	Workflow,
 	UnexpectedError,
-	UserError,
 	CHAT_TRIGGER_NODE_TYPE,
 	CHAT_HUB_MEMORY_TYPE,
 	IToolCall,
@@ -54,10 +53,6 @@ export class ChatHubProxyService implements ChatHubProxyProvider {
 	): IChatHubMemoryService {
 		this.validateRequest(node);
 
-		if (!ownerId) {
-			throw new UserError('Chat Hub Memory is only available on Chat hub and manual executions.');
-		}
-
 		// Extract workflow info for session creation
 		const workflowId = workflow.id;
 		const agentName = this.extractAgentName(workflow);
@@ -101,7 +96,7 @@ export class ChatHubProxyService implements ChatHubProxyProvider {
 		memoryNodeId: string,
 		providedTurnId: string | null,
 		previousTurnIds: string[],
-		ownerId: string,
+		ownerId: string | undefined,
 		workflowId: string | undefined,
 		agentName: string,
 	): IChatHubMemoryService {
@@ -227,7 +222,7 @@ export class ChatHubProxyService implements ChatHubProxyProvider {
 					const sessionTitle = agentName;
 					await sessionRepository.createChatSession({
 						id: sessionId,
-						ownerId,
+						ownerId: ownerId ?? null,
 						title: sessionTitle,
 						lastMessageAt: new Date(),
 						tools: [],
@@ -240,7 +235,7 @@ export class ChatHubProxyService implements ChatHubProxyProvider {
 					});
 					logger.debug('Created new chat hub session', {
 						sessionId,
-						ownerId,
+						ownerId: ownerId ?? null,
 						title: sessionTitle,
 						workflowId,
 						agentName,
