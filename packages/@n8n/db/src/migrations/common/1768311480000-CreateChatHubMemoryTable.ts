@@ -58,15 +58,18 @@ export class CreateChatHubMemoryTable1768311480000 implements ReversibleMigratio
 			`UPDATE ${escape.tableName(table.messages)} SET ${escape.columnName('turnId')} = ${escape.columnName('id')} WHERE ${escape.columnName('type')} = 'ai'`,
 		);
 
-		// TODO: do we lose messages history on sqlite?
-
 		// Make ownerId nullable to support anonymous sessions
 		await dropNotNull(table.sessions, 'ownerId');
 	}
 
 	async down({
 		schemaBuilder: { dropTable, dropColumns, dropIndex, addNotNull },
+		runQuery,
+		escape,
 	}: MigrationContext) {
+		await runQuery(
+			`DELETE FROM ${escape.tableName(table.sessions)} WHERE ${escape.columnName('ownerId')} IS NULL`,
+		);
 		await addNotNull(table.sessions, 'ownerId');
 		await dropColumns(table.messages, ['turnId']);
 		await dropIndex(table.memory, ['sessionId', 'memoryNodeId', 'turnId']);

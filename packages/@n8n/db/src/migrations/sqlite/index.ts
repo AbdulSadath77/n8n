@@ -50,6 +50,7 @@ import { AddCreatorIdToProjectTable1764276827837 } from './1764276827837-AddCrea
 import { AddResolvableFieldsToCredentials1764689448000 } from './1764689448000-AddResolvableFieldsToCredentials';
 import { AddAgentIdForeignKeys1765886667897 } from './1765886667897-AddAgentIdForeignKeys';
 import { AddChatMessageIndices1766068346315 } from './1766068346315-AddChatMessageIndices';
+import { CreateChatHubMemoryTable1768311480000 } from './1768311480000-CreateChatHubMemoryTable';
 import { UniqueWorkflowNames1620821879465 } from '../common/1620821879465-UniqueWorkflowNames';
 import { UpdateWorkflowCredentials1630330987096 } from '../common/1630330987096-UpdateWorkflowCredentials';
 import { AddNodeIds1658930531669 } from '../common/1658930531669-AddNodeIds';
@@ -126,7 +127,6 @@ import { BackfillMissingWorkflowHistoryRecords1765448186933 } from '../common/17
 import { AddIconToAgentTable1765788427674 } from '../common/1765788427674-AddIconToAgentTable';
 import { AddWorkflowVersionIdToExecutionData1765892199653 } from '../common/1765892199653-AddVersionIdToExecutionData';
 import { AddWorkflowPublishScopeToProjectRoles1766064542000 } from '../common/1766064542000-AddWorkflowPublishScopeToProjectRoles';
-import { CreateChatHubMemoryTable1768311480000 } from '../common/1768311480000-CreateChatHubMemoryTable';
 import type { Migration } from '../migration-types';
 
 const sqliteMigrations: Migration[] = [
