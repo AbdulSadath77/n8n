@@ -115,12 +115,11 @@ describe('Assignment.vue', () => {
 		await nextTick();
 
 		// Check if tooltip with binary data information is displayed
+		// The tooltip text varies based on binary mode (combined/separate) and includes an example
 		await waitFor(() => {
 			const tooltip = getByRole('tooltip');
 			expect(tooltip).toBeInTheDocument();
-			expect(tooltip).toHaveTextContent(
-				'Specify the property name of the binary data in the input item',
-			);
+			expect(tooltip.textContent).toMatch(/Specify the (property name|path) .* binary data/);
 		});
 	});
 

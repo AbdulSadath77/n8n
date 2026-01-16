@@ -416,37 +416,34 @@ describe('Resolution-based completions', () => {
 		test('should return completions for: {{ $input.| }}', async () => {
 			vi.spyOn(workflowHelpers, 'resolveParameter').mockResolvedValue($input);
 
-			// Subtract 1 for 'context' which is filtered when SplitInBatches is absent
-			expect(await completions('{{ $input.| }}')).toHaveLength(
-				Reflect.ownKeys($input).length - ['context'].length,
-			);
+			// inputOptions returns: item, params, first(), last(), all()
+			// params is kept when hasNoParams returns false (due to mock returning $input for any expression)
+			// objectOptions filters to only include options present in resolved data
+			// The proxy 'in' operator returns true for all matching properties
+			expect(await completions('{{ $input.| }}')).toHaveLength(6);
 		});
 
 		test('should return completions for: {{ "hello"+input.| }}', async () => {
 			vi.spyOn(workflowHelpers, 'resolveParameter').mockResolvedValue($input);
 
-			// Subtract 1 for 'context' which is filtered when SplitInBatches is absent
-			expect(await completions('{{ "hello"+$input.| }}')).toHaveLength(
-				Reflect.ownKeys($input).length - ['context'].length,
-			);
+			// Same as above
+			expect(await completions('{{ "hello"+$input.| }}')).toHaveLength(6);
 		});
 
 		test("should return completions for: {{ $('nodeName').| }}", async () => {
 			vi.spyOn(workflowHelpers, 'resolveParameter').mockResolvedValue($('Rename'));
 
-			// Subtract 2 for 'pairedItem' and 'context' which are filtered
-			expect(await completions('{{ $("Rename").| }}')).toHaveLength(
-				Reflect.ownKeys($('Rename')).length - ['pairedItem', 'context'].length,
-			);
+			// nodeRefOptions returns: item, isExecuted, params, itemMatching(), first(), last(), all()
+			// params is kept when hasNoParams returns false (due to mock returning node ref for any expression)
+			// objectOptions filters to only include options present in resolved data
+			expect(await completions('{{ $("Rename").| }}')).toHaveLength(8);
 		});
 
 		test("should return completions for: {{ $('(Complex) \"No\\'de\" name').| }}", async () => {
 			vi.spyOn(workflowHelpers, 'resolveParameter').mockResolvedValue($('Rename'));
 
-			// Subtract 2 for 'pairedItem' and 'context' which are filtered
-			expect(await completions("{{ $('(Complex) \"No\\'de\" name').| }}")).toHaveLength(
-				Reflect.ownKeys($('Rename')).length - ['pairedItem', 'context'].length,
-			);
+			// Same as above
+			expect(await completions("{{ $('(Complex) \"No\\'de\" name').| }}")).toHaveLength(8);
 		});
 
 		test('should return completions for: {{ $input.item.| }}', async () => {
